@@ -8,7 +8,7 @@ function testResults = runAllTests()
 %   3. Physical TDOA Constraints & Invalid Delay Rejection
 %   4. Synchronized Multi-Channel Circular Ring Buffer
 %   5. Adaptive Impulsive Event Detector & Multi-Channel Coincidence
-%   6. SRP-PHAT Spatial Beamforming Peak Accuracy
+%   6. Distance-Weighted SRP-PHAT Spatial Beamforming Peak Accuracy
 %   7. Hybrid Fusion & Continuous Angle Interpolation (0° to 360°)
 %   8. Circular Angular Error Benchmark across Cardinal & Intermediate Angles
 %   9. Channel Timing Multiplexing Skew Calibration Recovery
@@ -162,9 +162,9 @@ function testResults = runAllTests()
         fprintf("FAILED: %s\n", ME.message);
     end
 
-    %% Test 6: SRP-PHAT Spatial Beamformer
+    %% Test 6: Distance-Weighted SRP-PHAT Spatial Beamformer
     totalTests = totalTests + 1;
-    fprintf("TEST 6: SRP-PHAT Spatial Beamforming Peak Accuracy ... ");
+    fprintf("TEST 6: Distance-Weighted SRP-PHAT Spatial Peak Accuracy ... ");
     try
         testAngle = 135.0;
         [shotData, ~, ~, ~] = simulateGunshot(testAngle, 5.0, 30.0, cfg);
@@ -192,6 +192,7 @@ function testResults = runAllTests()
         testBearings = [0.0, 42.37, 90.0, 135.5, 180.0, 215.8, 270.0, 330.25];
         maxAngularError = 0;
         totalAngularError = 0;
+        geom = computeGeometry(cfg);
         
         for k = 1:numel(testBearings)
             trueAngle = testBearings(k);
@@ -201,7 +202,7 @@ function testResults = runAllTests()
             filtData  = bandpassFilter(cleanData, cfg);
             normData  = normalizeChannels(filtData, cfg);
             
-            res = hybridDOA(normData, cfg);
+            res = hybridDOA(normData, cfg, geom);
             
             err = min(abs(res.angle - trueAngle), 360 - abs(res.angle - trueAngle));
             maxAngularError = max(maxAngularError, err);
@@ -269,6 +270,7 @@ function testResults = runAllTests()
     fprintf("TEST 10: Event Processing Speed Benchmark (< 50 ms) ... ");
     try
         [shotData, ~, ~, ~] = simulateGunshot(75.5, 5.0, 25.0, cfg);
+        geom = computeGeometry(cfg);
         
         times = zeros(10, 1);
         for run = 1:10
@@ -276,7 +278,7 @@ function testResults = runAllTests()
             cleanData = removeDC(shotData);
             filtData  = bandpassFilter(cleanData, cfg);
             normData  = normalizeChannels(filtData, cfg);
-            res = hybridDOA(normData, cfg);
+            res = hybridDOA(normData, cfg, geom);
             times(run) = toc(t0) * 1000.0;
         end
         

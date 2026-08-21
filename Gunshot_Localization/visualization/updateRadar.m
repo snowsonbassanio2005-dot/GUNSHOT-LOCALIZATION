@@ -2,12 +2,12 @@ function updateRadar(radarAx, estAngleDeg, confidence, cfg, historyList)
 % UPDATERADAR - Render 360° Real-Time Polar Acoustic Radar Compass
 %
 % PURPOSE:
-%   Renders an intuitive, high-visibility real-time polar radar display showing:
+%   Renders the real-time polar radar display showing:
 %   1. 360° circular grid with cardinal & intercardinal bearings
-%   2. Physical 6-microphone circular array positions (M1..M6)
+%   2. Physical 6-microphone circular array positions (M1..M6 based on cfg.micAnglesDeg)
 %   3. Dynamic Direction of Arrival (DOA) heading beam and directional arrow
 %   4. Color-coded confidence indicator (Green = High, Amber = Medium, Red = Low)
-%   5. Historical gunshot event bearing blips
+%   5. Historical gunshot event bearing blips and running-average cluster arc
 %
 % INPUTS:
 %   radarAx     - Standard Axes handle for radar display
@@ -42,13 +42,13 @@ function updateRadar(radarAx, estAngleDeg, confidence, cfg, historyList)
     plot(radarAx, [-1.35, 1.35], [0, 0], 'Color', [0.18, 0.28, 0.40], 'LineWidth', 1.0);
     plot(radarAx, [0, 0], [-1.35, 1.35], 'Color', [0.18, 0.28, 0.40], 'LineWidth', 1.0);
     
-    % Cardinal Labels (0° = +X, 90° = +Y, 180° = -X, 270° = -Y)
+    % Cardinal Labels (0° = +X / East, 90° = +Y / North, 180° = -X / West, 270° = -Y / South)
     text(radarAx, 1.42, 0.0, "0° (+X)", 'Color', [0.75, 0.88, 1.0], 'FontSize', 9, 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
     text(radarAx, 0.0, 1.42, "90° (+Y)", 'Color', [0.75, 0.88, 1.0], 'FontSize', 9, 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
     text(radarAx, -1.42, 0.0, "180° (-X)", 'Color', [0.75, 0.88, 1.0], 'FontSize', 9, 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
     text(radarAx, 0.0, -1.42, "270° (-Y)", 'Color', [0.75, 0.88, 1.0], 'FontSize', 9, 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
 
-    % 2. Draw Physical Microphone Positions (R = 1.0 normalized)
+    % 2. Draw Physical Microphone Positions (Dynamically from cfg.micAnglesDeg)
     micAngles = cfg.micAnglesDeg;
     for m = 1:cfg.numMics
         ang = micAngles(m);
@@ -62,20 +62,37 @@ function updateRadar(radarAx, estAngleDeg, confidence, cfg, historyList)
             'Color', [0.85, 0.95, 1.0], 'FontSize', 8, 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
     end
 
-    % 3. Draw Past Event History Blips
+    % 3. Draw Past Event History Blips & Running Average Arc
     if nargin >= 5 && ~isempty(historyList)
         N_hist = numel(historyList);
+        recentAngles = zeros(N_hist, 1);
         for h = 1:N_hist
             hAngle = historyList(h).angle;
+            recentAngles(h) = hAngle;
             hx = cosd(hAngle);
             hy = sind(hAngle);
             
-            % Use standard 3-element RGB color vector
             histColor = [0.45, 0.55, 0.65];
             plot(radarAx, [0, 1.05 * hx], [0, 1.05 * hy], 'LineStyle', '--', ...
                 'Color', histColor, 'LineWidth', 1.2);
             plot(radarAx, 1.05 * hx, 1.05 * hy, 's', 'MarkerSize', 6, ...
                 'MarkerFaceColor', histColor, 'MarkerEdgeColor', 'none');
+        end
+
+        % If 3+ consecutive events occurred in close proximity (+/- 15 deg), draw running average cluster arc
+        if N_hist >= 3
+            last3 = recentAngles(max(1, N_hist - 2) : N_hist);
+            % Circular mean for last 3
+            meanSin = mean(sind(last3));
+            meanCos = mean(cosd(last3));
+            avgBearing = mod(atan2d(meanSin, meanCos), 360.0);
+            circStd = sqrt(-2 * log(max(1e-4, sqrt(meanSin^2 + meanCos^2)))) * (180/pi);
+            
+            if circStd <= 15.0
+                clusterArc = linspace(deg2rad(avgBearing - circStd), deg2rad(avgBearing + circStd), 25);
+                plot(radarAx, 1.25 * cos(clusterArc), 1.25 * sin(clusterArc), ...
+                    'Color', [0.2, 0.95, 0.4], 'LineWidth', 3.0);
+            end
         end
     end
 
@@ -87,10 +104,10 @@ function updateRadar(radarAx, estAngleDeg, confidence, cfg, historyList)
         confidence = max(0.05, min(1.0, confidence));
 
         % Confidence-based color scheme
-        if confidence >= 0.75
+        if confidence >= 0.70
             beamColor = [0.15, 0.95, 0.35]; % Bright Green (High confidence)
             statusStr = "HIGH";
-        elseif confidence >= 0.45
+        elseif confidence >= 0.40
             beamColor = [1.00, 0.75, 0.10]; % Amber (Medium confidence)
             statusStr = "MEDIUM";
         else

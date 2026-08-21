@@ -2,9 +2,9 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
 % UPDATEDASHBOARD - Fast Real-Time GUI Display & Telemetry Refresh
 %
 % PURPOSE:
-%   Updates the live oscilloscope waveforms, polar radar compass, spatial
-%   spectrum plots, digital angle readouts, and status badges with full
-%   sanitization against NaN, Inf, and high-amplitude voltage saturation.
+%   Updates the live oscilloscope waveforms (centered & auto-scaled),
+%   polar radar compass, spatial spectrum plots, digital angle readouts,
+%   and status badges.
 %
 % INPUTS:
 %   gui         - GUI handles structure from initGUI()
@@ -31,25 +31,28 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
         gui.cfg            = latestUserData.cfg;
     end
 
-    %% 1. Update Waveform Oscilloscope Traces (with Saturation & NaN Protection)
+    %% 1. Update Waveform Oscilloscope Traces (Centered AC & Auto-Scaled)
     if ~isempty(displayData) && isfield(gui, 'lineWaveforms')
         try
             displayData(~isfinite(displayData)) = 0.0;
-            [N_samples, C] = size(displayData);
+            
+            % Subtract DC baseline per channel so waveforms are centered at 0V
+            centeredData = displayData - mean(displayData, 1);
+            [N_samples, C] = size(centeredData);
             t_ms = (0 : N_samples - 1)' * (1000.0 / cfg.fs);
             
             for m = 1:min(C, numel(gui.lineWaveforms))
                 if isgraphics(gui.lineWaveforms(m))
-                    set(gui.lineWaveforms(m), 'XData', t_ms, 'YData', displayData(:, m));
+                    set(gui.lineWaveforms(m), 'XData', t_ms, 'YData', centeredData(:, m));
                 end
             end
             
-            % Robust auto-scaling (safe against extreme saturation spikes)
-            maxAmp = max(abs(displayData(:)));
-            if isempty(maxAmp) || ~isfinite(maxAmp) || maxAmp < 0.05
-                maxAmp = 0.5;
+            % Dynamic Auto-Scaling (centered around 0V with 35% margin)
+            maxAmp = max(abs(centeredData(:)));
+            if isempty(maxAmp) || ~isfinite(maxAmp) || maxAmp < 0.02
+                maxAmp = 0.20;
             end
-            yLimVal = min(10.0, max(0.20, maxAmp * 1.15));
+            yLimVal = max(0.08, maxAmp * 1.35);
             
             if isgraphics(gui.axWaveforms)
                 xlim(gui.axWaveforms, [0, max(1.0, max(t_ms))]);
@@ -73,7 +76,7 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
                 gui.historyList = gui.historyList(end - cfg.gui.radarHistorySize + 1 : end);
             end
 
-            % Update 360° Polar Radar Compass with new heading
+            % Update 360° Polar Radar Compass with new heading & running-average arc
             if isgraphics(gui.axRadar)
                 updateRadar(gui.axRadar, locRes.angle, locRes.confidence, cfg, gui.historyList);
             end
@@ -97,9 +100,9 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
             set(gui.txtDOA, 'String', sprintf('%0.2f°', locRes.angle));
             
             % Color-code confidence text
-            if locRes.confidence >= 0.75
+            if locRes.confidence >= 0.70
                 confColor = [0.15, 0.95, 0.35]; % Green
-            elseif locRes.confidence >= 0.45
+            elseif locRes.confidence >= 0.40
                 confColor = [1.00, 0.75, 0.10]; % Amber
             else
                 confColor = [0.95, 0.30, 0.30]; % Red
@@ -126,10 +129,17 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
     else
         % Reset status label to monitoring if no event in current cycle
         if ~gui.isPaused && isgraphics(gui.statusLabel)
-            set(gui.statusLabel, ...
-                'String', sprintf('● STATUS: ARMED & MONITORING (40 kS/s) | Device: %s', cfg.deviceName), ...
-                'BackgroundColor', [0.08, 0.14, 0.22], ...
-                'ForegroundColor', [0.2, 0.9, 0.4]);
+            if isfield(cfg, 'simulationMode') && cfg.simulationMode
+                set(gui.statusLabel, ...
+                    'String', '⚡ MODE: SIMULATION STREAMER', ...
+                    'BackgroundColor', [0.35, 0.22, 0.05], ...
+                    'ForegroundColor', [1.0, 0.85, 0.2]);
+            else
+                set(gui.statusLabel, ...
+                    'String', sprintf('● STATUS: ARMED & MONITORING (%s)', cfg.deviceName), ...
+                    'BackgroundColor', [0.08, 0.14, 0.22], ...
+                    'ForegroundColor', [0.2, 0.9, 0.4]);
+            end
         end
     end
 

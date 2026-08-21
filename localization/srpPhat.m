@@ -5,6 +5,8 @@ function [P_srp, azGridDeg, bestAngleDeg] = srpPhat(R_corrs, lags, cfg, geom, va
 %   Evaluates acoustic spatial energy across all azimuth angles (0° to 359°)
 %   by coherently summing the Phase-Transformed cross-correlations steered
 %   along the theoretical propagation delays for each microphone pair.
+%   Features baseline-distance weighting (w_k = d_ij / D_max) to maximize
+%   spatial sharpness and suppress room reflection sidelobes.
 %
 % INPUTS:
 %   R_corrs   - [N_corr x 15] GCC-PHAT cross-correlation matrix
@@ -49,13 +51,17 @@ function [P_srp, azGridDeg, bestAngleDeg] = srpPhat(R_corrs, lags, cfg, geom, va
     lagMin = lags(1);
     dLag = lags(2) - lags(1);
     N_corr = numel(lags);
+    maxD = max(geom.pairDistances); % e.g. 0.26 m
 
-    % Vectorized accumulation across all valid pairs with quality weighting
+    % Vectorized accumulation across all valid pairs with distance & quality weighting
     for idx = 1:numel(validPairIndices)
         k = validPairIndices(idx);
         R_k = R_corrs(:, k);
         tau_grid = tauLookups(k, :)'; % [360 x 1]
-        pairWeight = max(0.1, qualities(k));
+        
+        % Baseline-Distance Weight: diameter pairs (26 cm) provide 4x sharper resolution than 13 cm pairs
+        distWeight = geom.pairDistances(k) / maxD;
+        pairWeight = distWeight * max(0.1, qualities(k));
 
         % Fast linear interpolation of R_k at tau_grid
         floatIdx = (tau_grid - lagMin) / dLag + 1;

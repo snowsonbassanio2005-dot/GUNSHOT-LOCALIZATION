@@ -3,11 +3,12 @@ function gui = initGUI(cfg)
 %
 % PURPOSE:
 %   Creates a high-resolution dark-themed graphical dashboard featuring:
-%   1. Real-time 6-channel oscilloscope waveform monitor
-%   2. 360° Polar Acoustic Radar Compass with DOA vector & confidence arc
+%   1. Real-time 6-channel oscilloscope waveform monitor (centered & auto-scaled)
+%   2. 360° Polar Acoustic Radar Compass with dynamic DOA vector & running-average arc
 %   3. Continuous Spatial Likelihood Spectrum (GCC + SRP + Fused)
-%   4. Digital HUD Telemetry Readouts (DOA, Confidence, Valid Pairs, Latency)
-%   5. Interactive hardware & acquisition control buttons
+%   4. Digital HUD Telemetry Readouts (DOA, Confidence, Valid Pairs, Latency, SNR)
+%   5. Hardware status / Simulation Mode banner
+%   6. Interactive hardware & acquisition control buttons
 %
 % INPUT:
 %   cfg - Configuration structure from config.m
@@ -45,18 +46,29 @@ function gui = initGUI(cfg)
     %% 2. Header & Banner Panel
     uicontrol(gui.fig, 'Style', 'text', ...
         'String', 'ACOUSTIC GUNSHOT LOCALIZATION & TRACKING SYSTEM', ...
-        'Units', 'normalized', 'Position', [0.02, 0.94, 0.65, 0.045], ...
+        'Units', 'normalized', 'Position', [0.02, 0.94, 0.60, 0.045], ...
         'BackgroundColor', [0.05, 0.07, 0.10], 'ForegroundColor', [0.2, 0.8, 1.0], ...
         'FontSize', 15, 'FontWeight', 'bold', 'HorizontalAlignment', 'left');
 
+    % Hardware Status / Simulation Mode Banner
+    if isfield(cfg, 'simulationMode') && cfg.simulationMode
+        statusStr = '⚡ MODE: SIMULATION STREAMER';
+        statusBg  = [0.35, 0.22, 0.05]; % Amber
+        statusFg  = [1.0, 0.85, 0.2];
+    else
+        statusStr = sprintf('● STATUS: ARMED & MONITORING (%s)', cfg.deviceName);
+        statusBg  = [0.08, 0.14, 0.22];
+        statusFg  = [0.2, 0.9, 0.4];
+    end
+
     gui.statusLabel = uicontrol(gui.fig, 'Style', 'text', ...
-        'String', '● STATUS: ARMED & MONITORING (40 kS/s)', ...
-        'Units', 'normalized', 'Position', [0.68, 0.94, 0.30, 0.045], ...
-        'BackgroundColor', [0.08, 0.14, 0.22], 'ForegroundColor', [0.2, 0.9, 0.4], ...
+        'String', statusStr, ...
+        'Units', 'normalized', 'Position', [0.64, 0.94, 0.34, 0.045], ...
+        'BackgroundColor', statusBg, 'ForegroundColor', statusFg, ...
         'FontSize', 11, 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
 
     %% 3. Live 6-Channel Oscilloscope Waveform Panel (Top Left)
-    uicontrol(gui.fig, 'Style', 'text', 'String', 'LIVE 6-CHANNEL MICROPHONE WAVEFORMS (AI0 : AI5)', ...
+    uicontrol(gui.fig, 'Style', 'text', 'String', 'LIVE 6-CHANNEL MICROPHONE WAVEFORMS (AC Centered)', ...
         'Units', 'normalized', 'Position', [0.02, 0.89, 0.48, 0.03], ...
         'BackgroundColor', [0.05, 0.07, 0.10], 'ForegroundColor', [0.7, 0.85, 1.0], ...
         'FontSize', 10, 'FontWeight', 'bold', 'HorizontalAlignment', 'left');
@@ -70,7 +82,6 @@ function gui = initGUI(cfg)
     xlabel(gui.axWaveforms, 'Time (ms)', 'Color', [0.6, 0.75, 0.9], 'FontSize', 8);
     ylabel(gui.axWaveforms, 'Amplitude (V)', 'Color', [0.6, 0.75, 0.9], 'FontSize', 8);
 
-    % Pre-create line objects for each channel for fast blitting
     hold(gui.axWaveforms, 'on');
     channelColors = [
         0.20, 0.80, 1.00;  % AI0 (M1) - Cyan
@@ -91,7 +102,7 @@ function gui = initGUI(cfg)
     hold(gui.axWaveforms, 'off');
 
     %% 4. Spatial Likelihood & Beamforming Profile (Bottom Left)
-    uicontrol(gui.fig, 'Style', 'text', 'String', 'HYBRID SPATIAL SPECTRUM P(θ) = 0.6 GCC + 0.4 SRP', ...
+    uicontrol(gui.fig, 'Style', 'text', 'String', 'HYBRID SPATIAL SPECTRUM P(θ) = 0.4 GCC + 0.6 SRP', ...
         'Units', 'normalized', 'Position', [0.02, 0.47, 0.48, 0.03], ...
         'BackgroundColor', [0.05, 0.07, 0.10], 'ForegroundColor', [0.7, 0.85, 1.0], ...
         'FontSize', 10, 'FontWeight', 'bold', 'HorizontalAlignment', 'left');
@@ -158,7 +169,7 @@ function gui = initGUI(cfg)
         'BackgroundColor', [0.08, 0.11, 0.16], 'ForegroundColor', [0.2, 0.8, 1.0], ...
         'FontSize', 22, 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
 
-    % Card 3: Valid Pairs & Latency Sub-Panel
+    % Card 3: Valid Pairs, SNR & Latency Sub-Panel
     gui.txtDetails = uicontrol(telemetryPanel, 'Style', 'text', ...
         'String', sprintf("Valid Pairs: --/15  |  Latency: --.- ms  |  Events: 0  |  Device: %s", cfg.deviceName), ...
         'Units', 'normalized', 'Position', [0.04, 0.08, 0.92, 0.28], ...
@@ -210,7 +221,8 @@ function togglePause(fig)
         set(gui.statusLabel, 'String', '❚❚ SYSTEM PAUSED', 'ForegroundColor', [1.0, 0.7, 0.2]);
     else
         set(gui.btnPause, 'String', 'PAUSE ACQUISITION', 'BackgroundColor', [0.15, 0.25, 0.38]);
-        set(gui.statusLabel, 'String', '● STATUS: ARMED & MONITORING (40 kS/s)', 'ForegroundColor', [0.2, 0.9, 0.4]);
+        set(gui.statusLabel, 'String', sprintf('● STATUS: ARMED & MONITORING (%s)', gui.cfg.deviceName), ...
+            'ForegroundColor', [0.2, 0.9, 0.4]);
     end
     set(fig, 'UserData', gui);
 end
@@ -220,8 +232,10 @@ function toggleSimulationMode(fig)
     gui.cfg.simulationMode = ~gui.cfg.simulationMode;
     if gui.cfg.simulationMode
         set(gui.btnSim, 'String', 'MODE: SIMULATION', 'BackgroundColor', [0.18, 0.28, 0.22], 'ForegroundColor', [0.3, 0.95, 0.5]);
+        set(gui.statusLabel, 'String', '⚡ MODE: SIMULATION STREAMER', 'BackgroundColor', [0.35, 0.22, 0.05], 'ForegroundColor', [1.0, 0.85, 0.2]);
     else
         set(gui.btnSim, 'String', 'MODE: LIVE DAQ', 'BackgroundColor', [0.28, 0.18, 0.22], 'ForegroundColor', [1.0, 0.6, 0.6]);
+        set(gui.statusLabel, 'String', sprintf('● STATUS: ARMED & MONITORING (%s)', gui.cfg.deviceName), 'BackgroundColor', [0.08, 0.14, 0.22], 'ForegroundColor', [0.2, 0.9, 0.4]);
     end
     set(fig, 'UserData', gui);
 end

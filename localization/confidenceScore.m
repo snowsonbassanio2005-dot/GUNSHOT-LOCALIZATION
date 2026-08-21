@@ -3,9 +3,9 @@ function [confidence, metrics] = confidenceScore(P_fused, bestIdx, validMask, qu
 %
 % PURPOSE:
 %   Computes a robust, normalized confidence score in the range [0.0, 1.0]
-%   (or 0% to 100%) for the estimated Direction of Arrival. Fuses spatial
-%   spectrum peak sharpness, secondary peak rejection, valid microphone pair ratio,
-%   and mean GCC-PHAT correlation quality.
+%   (0% to 100%) for the estimated Direction of Arrival. Fuses spatial
+%   spectrum peak sharpness (PSLR), secondary mode ambiguity rejection,
+%   valid microphone pair ratio, and mean GCC-PHAT correlation quality.
 %
 % INPUTS:
 %   P_fused   - [360 x 1] Normalized fused spatial likelihood spectrum
@@ -16,16 +16,7 @@ function [confidence, metrics] = confidenceScore(P_fused, bestIdx, validMask, qu
 %
 % OUTPUTS:
 %   confidence - Normalized confidence value in range [0.0, 1.0]
-%   metrics    - Structure containing individual diagnostic metrics:
-%                .peakToSidelobeRatio  : (P_peak - P_secondary) / P_peak
-%                .peakToMeanRatio      : P_peak / mean(P)
-%                .validPairRatio       : N_valid / 15
-%                .meanGccQuality       : Average quality of valid pairs
-%                .secondaryPeakAngle   : Azimuth of second highest mode
-%
-% MATHEMATICAL FORMULATION:
-%   Confidence = 0.35 * PSLR + 0.25 * ValidPairRatio + 0.25 * MeanGCCQuality + 0.15 * min(1, PeakToMean/5)
-%   (Clamped strictly to [0.0, 1.0]).
+%   metrics    - Structure containing individual diagnostic metrics
 
     if nargin < 5
         cfg = config();
@@ -47,12 +38,11 @@ function [confidence, metrics] = confidenceScore(P_fused, bestIdx, validMask, qu
     meanVal = mean(P_fused) + 1e-12;
     peakToMean = peakVal / meanVal;
 
-    % 2. Secondary Peak Search (outside +/- 15 degree neighborhood of primary peak)
+    % 2. Secondary Peak Search (outside +/- 20 degree neighborhood of primary peak)
     N = numel(P_fused);
     azGrid = (0:N-1)';
     
-    % Mask out +/- 15 degrees around peak with circular wrap
-    neighborhoodDeg = 15;
+    neighborhoodDeg = 20;
     distFromPeak = min(abs(azGrid - (bestIdx - 1)), 360 - abs(azGrid - (bestIdx - 1)));
     sidelobeMask = distFromPeak > neighborhoodDeg;
 
@@ -75,13 +65,13 @@ function [confidence, metrics] = confidenceScore(P_fused, bestIdx, validMask, qu
         meanGccQual = 0.0;
     end
 
-    % 4. Weighted Composite Confidence Score
-    w_pslr      = 0.35;
-    w_valid     = 0.25;
+    % 4. Weighted Composite Confidence Score (PSLR given dominant 40% weight)
+    w_pslr      = 0.40;
+    w_valid     = 0.20;
     w_qual      = 0.25;
     w_peak_mean = 0.15;
 
-    normPeakToMean = min(1.0, (peakToMean - 1.0) / 4.0); % Reaches 1.0 when peak is 5x mean
+    normPeakToMean = min(1.0, max(0.0, (peakToMean - 1.0) / 3.5));
 
     rawScore = w_pslr * pslr + ...
                w_valid * validRatio + ...

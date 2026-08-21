@@ -18,24 +18,15 @@ function [simData, t, trueDelays, trueTDOA] = simulateGunshot(sourceAngleDeg, di
 %   t          - [N x 1] Time vector in seconds
 %   trueDelays - [6 x 1] True time of arrival relative to coordinate center (seconds)
 %   trueTDOA   - [15 x 1] True 15-pair TDOAs (seconds)
-%
-% ACOUSTIC MODEL:
-%   Acoustic Blast Wave (Friedlander / N-wave):
-%     p(t) = P0 * (1 - t/T) * exp(-alpha * t/T) for 0 <= t <= T
-%   Microphone Propagation:
-%     d_m = norm(Source_Pos - Mic_Pos_m)
-%     tau_m = d_m / c
-%   Fractional Delay via Frequency-Domain Phase Shifting:
-%     X_m(f) = S(f) .* exp(-j * 2 * pi * f * tau_m)
 
     if nargin < 4 || isempty(cfg)
         cfg = config();
     end
     if nargin < 1 || isempty(sourceAngleDeg)
-        sourceAngleDeg = 42.37;
+        sourceAngleDeg = 45.0;
     end
     if nargin < 2 || isempty(distanceMeters)
-        distanceMeters = 5.0; % 5 meters away (far-field spherical wave)
+        distanceMeters = 5.0;
     end
     if nargin < 3 || isempty(snr_dB)
         snr_dB = 25.0;
@@ -57,25 +48,32 @@ function [simData, t, trueDelays, trueTDOA] = simulateGunshot(sourceAngleDeg, di
         trueDelays(m) = distances(m) / c;
     end
 
+    % Include multiplexed ADC hardware skew
+    channelOffsets = zeros(numMics, 1);
+    if isfield(cfg, 'calibration') && isfield(cfg.calibration, 'channelOffsets')
+        channelOffsets = cfg.calibration.channelOffsets(:);
+    end
+    totalDelays = trueDelays + channelOffsets;
+
     % Relative delays aligned so earliest mic arrives at t_lead
-    t_lead = 0.015; % 15 ms baseline delay before impulse onset
-    relDelays = trueDelays - min(trueDelays) + t_lead;
+    t_lead = 0.015;
+    relDelays = totalDelays - min(totalDelays) + t_lead;
 
     % Total simulation duration
-    totalDur = 0.080; % 80 ms
+    totalDur = 0.080;
     N = round(totalDur * fs);
     t = (0 : N - 1)' / fs;
 
     % Generate Base Friedlander Blast Wave Pulse (2.5 ms duration)
     T_blast = 0.0025;
     alpha = 2.8;
-    P0 = 2.0; % Volts peak
+    P0 = 2.0;
     
     tBlast = (0 : 1/fs : T_blast)';
     basePulse = P0 * (1 - tBlast / T_blast) .* exp(-alpha * tBlast / T_blast);
 
-    % Bandpass acoustic pulse (200 - 4000 Hz)
-    [b, a] = butter(2, [200, 4000] / (fs/2), 'bandpass');
+    % Bandpass acoustic pulse (200 - 3800 Hz)
+    [b, a] = butter(2, [200, 3800] / (fs/2), 'bandpass');
     filteredPulse = filter(b, a, basePulse);
 
     % Frequency-domain exact fractional delay synthesis
@@ -87,11 +85,8 @@ function [simData, t, trueDelays, trueTDOA] = simulateGunshot(sourceAngleDeg, di
     simDataClean = zeros(N, numMics);
 
     for m = 1:numMics
-        % Phase shift operator: exp(-j * 2*pi * f * tau)
         phaseShift = exp(-1j * 2 * pi * freqs * relDelays(m));
         delayedSig = real(ifft(P_fft .* phaseShift, N_fft));
-        
-        % 1/R spherical attenuation
         attenuation = (distanceMeters / distances(m));
         simDataClean(:, m) = attenuation * delayedSig(1:N);
     end

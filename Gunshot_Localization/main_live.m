@@ -7,14 +7,9 @@
 % PURPOSE:
 %   Continuously acquires 6-channel synchronized audio from the NI DAQ-6221
 %   (or simulation engine) connected to a 26 cm circular array of 6 MAX4466 microphones.
-%   Features resilient, crash-proof acquisition loop that never shuts down unexpectedly.
-%
-% HARDWARE SETUP:
-%   DAQ Card:     National Instruments NI USB-6221 (Dev1)
-%   Channels:     AI0, AI1, AI2, AI3, AI4, AI5
-%   Sample Rate:  40,000 Hz per channel (40 kS/s)
-%   Microphones:  6 x MAX4466 Electret Microphones
-%   Array:        Circular, 26 cm diameter (13 cm radius), 60° spacing
+%   Features pre-computed geometry, zero-phase bandpass filtering, earliest-arrival
+%   onset windowing, distance-weighted SRP-PHAT, centered AC waveform oscilloscope,
+%   adaptive SNR cooldown, and crash-proof acquisition loop.
 
 clear;
 clc;
@@ -39,10 +34,11 @@ addpath(fullfile(projectRoot, 'calibration'));
 addpath(fullfile(projectRoot, 'events'));
 addpath(fullfile(projectRoot, 'tests'));
 
-%% 2. Load Configuration
+%% 2. Load Configuration & Pre-compute Array Geometry
 cfg = config();
-fprintf("[CONFIG] Loaded configuration. Array Radius = %0.2f m, Fs = %d Hz\n", ...
-    cfg.arrayRadius, cfg.fs);
+geom = computeGeometry(cfg);
+fprintf("[CONFIG] Loaded configuration. Layout: %s, Radius = %0.2f m, Fs = %d Hz\n", ...
+    cfg.micLayout, cfg.arrayRadius, cfg.fs);
 
 %% 3. Initialize Acquisition (NI-DAQ or Simulation)
 [dq, daqInfo] = initDAQ(cfg);
@@ -91,8 +87,11 @@ while isgraphics(gui.fig) && gui.isRunning
         if isTriggered
             lastTriggerTic = tic;
             
-            % Acquire post-trigger audio block to ensure complete impulse envelope is in buffer
-            [postBlock, dq] = readBlock(dq, round(0.030 * cfg.fs));
+            % Adaptive cooldown based on event SNR (prevents room reflection re-triggers)
+            effectiveCooldownSec = max(cfg.trigger.cooldownSec, min(0.200, 0.050 + 0.004 * eventMeta.snr_dB));
+            
+            % Acquire post-trigger audio block to ensure complete direct wavefront is in buffer
+            [postBlock, dq] = readBlock(dq, round(0.025 * cfg.fs));
             if ~isempty(postBlock)
                 postBlock(~isfinite(postBlock)) = 0.0;
                 buf.write(postBlock);
@@ -106,13 +105,13 @@ while isgraphics(gui.fig) && gui.isRunning
                 rawWindow(~isfinite(rawWindow)) = 0.0;
                 rawWindow = max(-10.0, min(10.0, rawWindow));
 
-                % 2. Research-Grade Preprocessing Pipeline
+                % 2. Preprocessing Pipeline
                 cleanWindow = removeDC(rawWindow);
                 filtWindow  = bandpassFilter(cleanWindow, cfg);
                 normWindow  = normalizeChannels(filtWindow, cfg);
 
-                % 3. Execute Hybrid GCC-PHAT + SRP-PHAT Localization
-                locRes = hybridDOA(normWindow, cfg);
+                % 3. Execute Hybrid GCC-PHAT + SRP-PHAT Localization with pre-computed geometry
+                locRes = hybridDOA(normWindow, cfg, geom);
 
                 % 4. Update GUI Dashboard with Detection Telemetry
                 scopeSamples = round(cfg.gui.waveformWindowSec * cfg.fs);
