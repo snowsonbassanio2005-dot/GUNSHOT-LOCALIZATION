@@ -110,9 +110,9 @@ function gui = initGUI(cfg)
 
     hold(gui.axSpectrum, 'on');
     gui.lineGcc = plot(gui.axSpectrum, 0:359, zeros(360, 1), '--', ...
-        'Color', [0.2, 0.7, 1.0, 0.6], 'LineWidth', 1.0, 'DisplayName', 'P_{GCC}(θ)');
+        'Color', [0.25, 0.65, 0.95], 'LineWidth', 1.1, 'DisplayName', 'P_{GCC}(θ)');
     gui.lineSrp = plot(gui.axSpectrum, 0:359, zeros(360, 1), ':', ...
-        'Color', [1.0, 0.7, 0.2, 0.6], 'LineWidth', 1.2, 'DisplayName', 'P_{SRP}(θ)');
+        'Color', [0.95, 0.65, 0.20], 'LineWidth', 1.2, 'DisplayName', 'P_{SRP}(θ)');
     gui.lineFused = plot(gui.axSpectrum, 0:359, zeros(360, 1), '-', ...
         'Color', [0.1, 0.95, 0.4], 'LineWidth', 2.0, 'DisplayName', 'P_{Fused}(θ)');
     gui.linePeakMarker = plot(gui.axSpectrum, 0, 0, 'rv', ...
@@ -129,7 +129,7 @@ function gui = initGUI(cfg)
 
     gui.axRadar = axes(gui.fig, 'Units', 'normalized', ...
         'Position', [0.52, 0.45, 0.45, 0.45], ...
-        'Color', [0.07, 0.09, 0.13]);
+        'Color', [0.06, 0.08, 0.12]);
     updateRadar(gui.axRadar, NaN, 0, cfg, []);
 
     %% 6. Telemetry HUD Cards (Bottom Right)

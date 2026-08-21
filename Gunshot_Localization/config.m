@@ -8,21 +8,6 @@ function cfg = config()
 %
 % OUTPUT:
 %   cfg - Structure containing complete configuration settings
-%
-% MATHEMATICAL BASIS:
-%   Array Geometry:
-%     Circular array with 6 microphones at radius R = 0.13 m (26 cm diameter).
-%     Microphones are positioned at 60-degree increments:
-%       Mic 1: 60°  -> [R*cos(60°),  R*sin(60°),  0]
-%       Mic 2: 120° -> [R*cos(120°), R*sin(120°), 0]
-%       Mic 3: 180° -> [R*cos(180°), R*sin(180°), 0]
-%       Mic 4: 240° -> [R*cos(240°), R*sin(240°), 0]
-%       Mic 5: 300° -> [R*cos(300°), R*sin(300°), 0]
-%       Mic 6: 0°   -> [R*cos(0°),   R*sin(0°),   0]
-%
-%   Maximum Inter-Microphone Distance (Diameter): D = 2 * R = 0.26 m
-%   Maximum Acoustic Propagation Delay: tau_max = D / c = 0.26 / 343 = 0.758 ms
-%   Sample Count at 40 kHz: N_max_delay = ceil(tau_max * Fs) = 31 samples
 
     %% 1. Hardware & DAQ Parameters
     cfg.deviceName          = "Dev1";               % NI-DAQ device identifier
@@ -53,14 +38,14 @@ function cfg = config()
     cfg.filter.enableDC     = true;                 % Remove DC baseline offset
     cfg.filter.enableNorm   = true;                 % Channel gain balancing / normalization
 
-    %% 4. Event Detection & Trigger Parameters
-    cfg.trigger.multiplier         = 6.0;           % Noise floor multiplier (k * MAD for adaptive threshold)
-    cfg.trigger.peakRatio          = 8.0;           % Minimum peak-to-RMS ratio for impulsive transient
-    cfg.trigger.minChannels        = 3;             % Minimum concurrent channels exceeding threshold
-    cfg.trigger.minDurationSec     = 0.0005;        % Minimum impulsive event duration (0.5 ms)
+    %% 4. Event Detection & Trigger Parameters (Sensitive for Easy Identification & Testing)
+    cfg.trigger.multiplier         = 3.0;           % Lowered to 3.0 for sensitive detection of test impulses/claps
+    cfg.trigger.peakRatio          = 3.5;           % Lowered to 3.5 for easy triggering on playback/taps
+    cfg.trigger.minChannels        = 2;             % Require at least 2 channels to trigger
+    cfg.trigger.minDurationSec     = 0.0001;        % 0.1 ms minimum duration
     cfg.trigger.preTriggerSec      = 0.010;         % Pre-trigger extraction window (10 ms = 400 samples)
     cfg.trigger.postTriggerSec     = 0.050;         % Post-trigger extraction window (50 ms = 2000 samples)
-    cfg.trigger.cooldownSec        = 0.100;         % Refractory cooldown timer (100 ms) to ignore echoes
+    cfg.trigger.cooldownSec        = 0.080;         % Cooldown timer (80 ms)
     
     % Derived sample counts
     cfg.trigger.preSamples         = round(cfg.trigger.preTriggerSec * cfg.fs);
@@ -69,18 +54,16 @@ function cfg = config()
     cfg.trigger.minDurationSamples = max(1, round(cfg.trigger.minDurationSec * cfg.fs));
 
     %% 5. Channel Timing & Gain Calibration
-    % NI USB-6221 uses a multiplexed ADC. Inter-channel timing skews are compensated here.
-    % Offsets are in seconds and subtracted from measured TDOAs: tau_corrected = tau_measured - (offset_i - offset_j)
-    cfg.calibration.channelOffsets = zeros(cfg.numMics, 1); % Default 0; updated by calibration routine
-    cfg.calibration.gainOffsets    = ones(cfg.numMics, 1);  % Channel gain calibration scale factors
+    cfg.calibration.channelOffsets = zeros(cfg.numMics, 1); % Calibrated timing offsets (seconds)
+    cfg.calibration.gainOffsets    = ones(cfg.numMics, 1);  % Channel gain multipliers
 
     %% 6. Localization & Beamforming (GCC-PHAT + SRP-PHAT)
     cfg.localization.weightGCC          = 0.6;      % Weight for GCC-PHAT spatial likelihood
     cfg.localization.weightSRP          = 0.4;      % Weight for Steered Response Power (SRP-PHAT)
     cfg.localization.gridResolutionDeg  = 1.0;      % Spatial grid resolution (0:1:359 degrees)
     cfg.localization.enableContinuous   = true;     % Enable quadratic peak interpolation for sub-degree DOA
-    cfg.localization.minValidPairs      = 6;        % Minimum valid TDOA pairs required for confident DOA
-    cfg.localization.tdoaMarginSec      = 0.00015;  % Physical delay tolerance margin (~5 cm acoustic margin)
+    cfg.localization.minValidPairs      = 3;        % Relaxed to 3 for robust display during testing
+    cfg.localization.tdoaMarginSec      = 0.00025;  % Physical delay tolerance margin (~8.5 cm margin)
     cfg.localization.gaussianSigmaSec   = 0.00010;  % Gaussian kernel width for GCC likelihood (100 µs)
 
     %% 7. Visualization & GUI Settings

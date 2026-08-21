@@ -1,41 +1,20 @@
 function [isTriggered, eventMeta] = eventDetector(data, cfg, lastTriggerTic)
-% EVENTDETECTOR - Robust Impulsive Acoustic Gunshot Event Detector
+% EVENTDETECTOR - Robust & Sensitive Impulsive Acoustic Event Detector
 %
 % PURPOSE:
-%   Detects sharp impulsive acoustic events (gunshots/playback impulses)
-%   by evaluating baseline-corrected energy, robust statistical noise floor
-%   (Median Absolute Deviation - MAD), peak-to-RMS ratio, minimum pulse
-%   duration, and multi-channel coincidence voting across the circular array.
+%   Detects sharp acoustic impulse events (gunshot playbacks, claps, taps)
+%   by comparing recent transient energy against background noise floor
+%   using Median Absolute Deviation (MAD), Peak-to-RMS ratio, and multi-channel
+%   coincidence voting.
 %
 % INPUTS:
-%   data           - [N x 6] recent audio samples from CircularBuffer
-%   cfg            - Configuration structure (thresholds, timings, sample rate)
+%   data           - [N x 6] Recent audio samples from CircularBuffer
+%   cfg            - Configuration structure from config.m
 %   lastTriggerTic - uint64 tic timestamp of the previous trigger event (or -inf)
 %
 % OUTPUTS:
 %   isTriggered - Boolean flag (true if valid acoustic impulse detected)
-%   eventMeta   - Structure containing trigger diagnostics:
-%                 .triggeredChannels : Number of channels meeting criteria (>= 3)
-%                 .channelMask       : [6 x 1] logical vector of triggering channels
-%                 .peakRatio         : Maximum Peak-to-RMS energy ratio across channels
-%                 .snr_dB            : Estimated impulsive SNR in decibels
-%                 .timestamp         : datetime string of detection
-%                 .peakSampleIdx     : Index within data window of the impulse peak
-%
-% MATHEMATICAL / DSP ALGORITHM:
-%   1. Baseline DC Zeroing:
-%        x_k(t) = data_k(t) - median(data_k)
-%   2. Robust Noise Floor Estimation (MAD):
-%        sigma_k = 1.4826 * median(|x_k(t) - median(x_k)|)
-%   3. Adaptive Energy Threshold:
-%        T_k = median(|x_k|) + cfg.trigger.multiplier * sigma_k
-%   4. Impulsive Ratio Test:
-%        PeakRatio_k = max(|x_k|) / (rms(x_k) + eps) > cfg.trigger.peakRatio
-%   5. Temporal Coincidence:
-%        At least cfg.trigger.minChannels channels must exceed threshold T_k
-%        within array propagation window (tau_max = D/c = 0.76 ms).
-%   6. Cooldown Refractory Guard:
-%        toc(lastTriggerTic) >= cfg.trigger.cooldownSec
+%   eventMeta   - Diagnostic structure containing trigger metadata
 
     isTriggered = false;
     eventMeta   = struct( ...
@@ -46,77 +25,68 @@ function [isTriggered, eventMeta] = eventDetector(data, cfg, lastTriggerTic)
         'timestamp',         "", ...
         'peakSampleIdx',     0);
 
-    % Guard: ensure sufficient samples are available
+    % Ensure sufficient samples
     [numSamples, numChannels] = size(data);
     minReqSamples = cfg.trigger.preSamples + cfg.trigger.minDurationSamples;
     if numSamples < minReqSamples
         return;
     end
 
-    % Guard: refractory cooldown period to ignore reflections and reverberation
+    % Refractory cooldown timer
     if ~isinf(lastTriggerTic) && ~isempty(lastTriggerTic)
         if toc(lastTriggerTic) < cfg.trigger.cooldownSec
             return;
         end
     end
 
-    % 1. Channel-wise baseline DC removal
+    % Baseline DC centering
     centered = data - median(data, 1);
 
-    % Focus analysis on recent buffer tail (e.g. latest 20 ms window)
-    analysisLen = min(numSamples, round(0.025 * cfg.fs)); % 25 ms
-    recentData = centered(end - analysisLen + 1 : end, :);
+    % Analysis window: evaluate recent 25 ms
+    analysisLen = min(numSamples, round(0.025 * cfg.fs)); % 25 ms = 1000 samples
+    recentData  = centered(end - analysisLen + 1 : end, :);
 
-    channelTriggered = false(numChannels, 1);
+    channelTriggered  = false(numChannels, 1);
     channelPeakRatios = zeros(numChannels, 1);
     channelSNRs       = zeros(numChannels, 1);
     channelPeakIdxs   = zeros(numChannels, 1);
 
-    minDurationSamples = cfg.trigger.minDurationSamples;
-
     for ch = 1:numChannels
-        chSig = recentData(:, ch);
-        absSig = abs(chSig);
+        fullCh = centered(:, ch);
+        recentCh = recentData(:, ch);
+        absRecent = abs(recentCh);
 
-        % 2. Robust noise floor estimation via MAD (Normal distribution equivalent)
-        medVal = median(absSig);
-        madVal = median(abs(absSig - medVal));
-        noiseFloor = 1.4826 * madVal + 1e-6; % Avoid division by zero
+        % Background noise floor estimation from broader buffer history
+        absFull = abs(fullCh);
+        medVal = median(absFull);
+        madVal = median(abs(absFull - medVal));
+        noiseFloor = 1.4826 * madVal + 1e-5; % Robust scale estimator
 
-        % 3. Adaptive threshold
+        % Adaptive threshold: T = median + multiplier * sigma
         threshold = medVal + cfg.trigger.multiplier * noiseFloor;
 
-        % 4. Peak-to-RMS ratio
-        chRMS = rms(chSig) + 1e-9;
-        [chPeakVal, pkIdx] = max(absSig);
+        % Peak-to-RMS impulsive ratio
+        chRMS = rms(recentCh) + 1e-8;
+        [chPeakVal, pkIdx] = max(absRecent);
         pkRatio = chPeakVal / chRMS;
+
         channelPeakRatios(ch) = pkRatio;
         channelPeakIdxs(ch)   = pkIdx;
 
-        % 5. Duration check: count consecutive samples exceeding threshold
-        exceedMask = (absSig > threshold);
-        % Find length of longest consecutive pulse
-        pulseLengths = diff([0; find(~exceedMask); numel(exceedMask) + 1]) - 1;
-        maxPulseLen = 0;
-        if ~isempty(pulseLengths)
-            maxPulseLen = max(pulseLengths(pulseLengths > 0));
-        end
-
-        % Channel triggers if threshold, peak ratio, and duration criteria are met
-        if (chPeakVal > threshold) && (pkRatio >= cfg.trigger.peakRatio) && (maxPulseLen >= minDurationSamples)
+        % Check if threshold & peak ratio are satisfied
+        if (chPeakVal > threshold) && (pkRatio >= cfg.trigger.peakRatio)
             channelTriggered(ch) = true;
-            channelSNRs(ch) = 20 * log10(chPeakVal / noiseFloor);
+            channelSNRs(ch) = 20 * log10(max(1.0, chPeakVal / noiseFloor));
         end
     end
 
     activeChannelCount = sum(channelTriggered);
 
-    % 6. Multi-channel coincidence voting
+    % Multi-channel coincidence voting
     if activeChannelCount >= cfg.trigger.minChannels
-        % Verify temporal coincidence across triggering channels (within 1.5 * array transit time)
         activePeaks = channelPeakIdxs(channelTriggered);
         maxInterMicSampleSpread = max(activePeaks) - min(activePeaks);
-        maxAllowedSpread = round(1.5 * (2 * cfg.arrayRadius / cfg.c) * cfg.fs) + 5;
+        maxAllowedSpread = round(2.0 * (2 * cfg.arrayRadius / cfg.c) * cfg.fs) + 10;
 
         if maxInterMicSampleSpread <= maxAllowedSpread
             isTriggered = true;

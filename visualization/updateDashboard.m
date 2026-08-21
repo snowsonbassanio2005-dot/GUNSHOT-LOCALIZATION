@@ -25,6 +25,8 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
         gui.isRunning      = latestUserData.isRunning;
         gui.isPaused       = latestUserData.isPaused;
         gui.historyList    = latestUserData.historyList;
+        gui.lastAngle      = latestUserData.lastAngle;
+        gui.lastConfidence = latestUserData.lastConfidence;
         gui.cfg            = latestUserData.cfg;
     end
 
@@ -41,7 +43,7 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
         
         % Auto-scale waveform axes
         maxAmp = max(abs(displayData(:)));
-        yLimVal = max(0.2, maxAmp * 1.15);
+        yLimVal = max(0.15, maxAmp * 1.20);
         if isgraphics(gui.axWaveforms)
             xlim(gui.axWaveforms, [0, max(t_ms)]);
             ylim(gui.axWaveforms, [-yLimVal, yLimVal]);
@@ -61,7 +63,7 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
             gui.historyList = gui.historyList(end - cfg.gui.radarHistorySize + 1 : end);
         end
 
-        % Update 360° Polar Radar Compass
+        % Update 360° Polar Radar Compass with new heading
         updateRadar(gui.axRadar, locRes.angle, locRes.confidence, cfg, gui.historyList);
 
         % Update Spatial Likelihood Spectrum Plots
@@ -76,12 +78,12 @@ function gui = updateDashboard(gui, displayData, locRes, eventMeta, cfg)
         set(gui.txtDOA, 'String', sprintf('%0.2f°', locRes.angle));
         
         % Color-code confidence text
-        if locRes.confidence >= 0.80
-            confColor = [0.2, 0.95, 0.4]; % Green
-        elseif locRes.confidence >= 0.50
-            confColor = [1.0, 0.75, 0.1]; % Amber
+        if locRes.confidence >= 0.75
+            confColor = [0.15, 0.95, 0.35]; % Green
+        elseif locRes.confidence >= 0.45
+            confColor = [1.00, 0.75, 0.10]; % Amber
         else
-            confColor = [0.95, 0.3, 0.3]; % Red
+            confColor = [0.95, 0.30, 0.30]; % Red
         end
         set(gui.txtConf, 'String', sprintf('%0.1f%%', locRes.confidence * 100.0), ...
                          'ForegroundColor', confColor);
