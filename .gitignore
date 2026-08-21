@@ -1,0 +1,57 @@
+# ==============================================================================
+# MATLAB Live Gunshot Localization System - .gitignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# MATLAB Artifacts & Temporary Files
+# ------------------------------------------------------------------------------
+*.asv
+*.m~
+*.bak
+*.tmp
+*.log
+*.dmp
+*.crash
+
+# MATLAB Code Generation & Compiler Output
+*.mex*
+*.slxc
+*.dmr
+*.prj
+slprj/
+codegen/
+
+# MATLAB App Designer & Figure Cache
+*.fig.bak
+*.mlapp.bak
+
+# ------------------------------------------------------------------------------
+# Dynamically Generated Runtime Events & Data Logs
+# ------------------------------------------------------------------------------
+events/event_*/
+events/*.csv
+events/*.json
+events/*.png
+events/*.mat
+
+# ------------------------------------------------------------------------------
+# OS-Specific Files
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------------------------
+# IDEs & Editor Configuration
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+.project
+.settings/
