@@ -91,7 +91,14 @@ while isgraphics(gui.fig) && gui.isRunning
         if isTriggered
             lastTriggerTic = tic;
             
-            % 1. Extract exact synchronized event window (10 ms pre + 50 ms post = 60 ms)
+            % Acquire post-trigger audio block to ensure complete impulse envelope is in buffer
+            [postBlock, dq] = readBlock(dq, round(0.030 * cfg.fs));
+            if ~isempty(postBlock)
+                postBlock(~isfinite(postBlock)) = 0.0;
+                buf.write(postBlock);
+            end
+
+            % 1. Extract exact synchronized event window
             [rawWindow, isComplete] = buf.extractEventWindow(cfg.trigger.preSamples, cfg.trigger.postSamples);
             
             if isComplete && size(rawWindow, 1) >= cfg.trigger.eventWindowSamples
@@ -133,9 +140,8 @@ while isgraphics(gui.fig) && gui.isRunning
         end
 
     catch loopME
-        % Print warning but NEVER exit the acquisition loop!
-        fprintf("[WARNING] Loop exception caught and recovered: %s (Line: %d)\n", ...
-            loopME.message, loopME.stack(1).line);
+        % Print warning but NEVER exit the acquisition loop
+        fprintf("[WARNING] Loop exception caught and recovered: %s\n", loopME.message);
     end
 
     % Yield thread execution to MATLAB GUI event queue
