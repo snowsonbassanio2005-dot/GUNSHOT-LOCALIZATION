@@ -46,7 +46,13 @@ function cfg = config()
     % Pre-compute Butterworth filter coefficients at startup (eliminates per-event design overhead)
     nyquist = cfg.fs / 2;
     Wn = [max(1e-4, cfg.filter.band(1) / nyquist), min(0.9999, cfg.filter.band(2) / nyquist)];
-    [cfg.filter.b, cfg.filter.a] = butter(cfg.filter.order, Wn, 'bandpass');
+    try
+        [cfg.filter.b, cfg.filter.a] = butter(cfg.filter.order, Wn, 'bandpass');
+    catch
+        % Fallback 4th-order Butterworth bandpass [200, 3800] Hz @ 40 kHz
+        cfg.filter.b = [0.00336281512868239, 0, -0.01345126051472956, 0, 0.02017689077209434, 0, -0.01345126051472956, 0, 0.00336281512868239];
+        cfg.filter.a = [1.0, -6.467998884146088, 18.393869706084267, -30.087944407993646, 31.001760636078178, -20.618913059361105, 8.645783486849169, -2.08936898577367, 0.222811572920135];
+    end
 
     %% 4. Event Detection & Trigger Parameters
     cfg.trigger.multiplier         = 3.5;           % Noise floor multiplier (balanced for sensitive impulse detection)

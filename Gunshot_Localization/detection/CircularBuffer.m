@@ -17,15 +17,15 @@ classdef CircularBuffer < handle
 %   Uses vectorized block wrapping and zero-reallocation memory addressing.
 
     properties (Access = public)
-        capacity    (1,1) double = 80000;  % Maximum buffer length in samples (2 sec @ 40kHz)
-        numChannels (1,1) double = 6;      % Number of synchronized audio channels
+        capacity    = 80000;  % Maximum buffer length in samples (2 sec @ 40kHz)
+        numChannels = 6;      % Number of synchronized audio channels
     end
 
     properties (Access = private)
-        buffer      (:,:) double           % Internal storage matrix [capacity x numChannels]
-        headIdx     (1,1) double = 1;      % Write head index (1-based, points to next write slot)
-        totalCount  (1,1) double = 0;      % Total samples written since initialization
-        isFull      (1,1) logical = false; % Flag indicating whether buffer has wrapped
+        buffer                % Internal storage matrix [capacity x numChannels]
+        headIdx     = 1;      % Write head index (1-based, points to next write slot)
+        totalCount  = 0;      % Total samples written since initialization
+        isFull      = false;  % Flag indicating whether buffer has wrapped
     end
 
     methods

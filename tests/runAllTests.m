@@ -65,7 +65,10 @@ function testResults = runAllTests()
             intD = floor(dSamples);
             fracD = dSamples - intD;
             t_s = (-floor(N_sinc/2) : floor(N_sinc/2))' - fracD;
-            h = sinc(t_s);
+            sinc_ts = ones(size(t_s));
+            nz = (t_s ~= 0);
+            sinc_ts(nz) = sin(pi * t_s(nz)) ./ (pi * t_s(nz));
+            h = sinc_ts;
             
             sig1 = zeros(2048, 1);
             sig2 = zeros(2048, 1);

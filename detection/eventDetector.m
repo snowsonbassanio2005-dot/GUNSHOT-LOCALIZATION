@@ -65,8 +65,8 @@ function [isTriggered, eventMeta] = eventDetector(data, cfg, lastTriggerTic)
         % Adaptive threshold: T = median + multiplier * sigma
         threshold = medVal + cfg.trigger.multiplier * noiseFloor;
 
-        % Peak-to-RMS impulsive ratio
-        chRMS = rms(recentCh) + 1e-8;
+        % Peak-to-RMS impulsive ratio (pure MATLAB, zero toolbox dependency)
+        chRMS = sqrt(mean(recentCh.^2)) + 1e-8;
         [chPeakVal, pkIdx] = max(absRecent);
         pkRatio = chPeakVal / chRMS;
 

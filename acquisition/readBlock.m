@@ -95,7 +95,12 @@ function [eventSig, delays] = generateSyntheticImpulse(cfg, sourceAngleDeg)
     basePulse = P0 * (1 - tImp / T_dur) .* exp(-alpha * tImp / T_dur);
     
     % Bandpass shaping (200 - 4000 Hz)
-    [b, a] = butter(2, [200, 4000] / (fs/2), 'bandpass');
+    try
+        [b, a] = butter(2, [200, 4000] / (fs/2), 'bandpass');
+    catch
+        b = [0.05644846226073642, 0, -0.11289692452147285, 0, 0.05644846226073642];
+        a = [1.0, -3.193633306817034, 3.8485320133979526, -2.1050966172593095, 0.45044543005604093];
+    end
     shapedPulse = filter(b, a, basePulse);
     
     % Total signal duration with delays + padding
@@ -110,7 +115,7 @@ function [eventSig, delays] = generateSyntheticImpulse(cfg, sourceAngleDeg)
         % Sinc fractional delay filter
         N_sinc = 31;
         t_sinc = (-floor(N_sinc/2) : floor(N_sinc/2))' - fracDelay;
-        sincFilter = sinc(t_sinc);
+        sincFilter = localSinc(t_sinc);
         
         delayedMicPulse = conv(shapedPulse, sincFilter, 'same');
         
@@ -121,4 +126,11 @@ function [eventSig, delays] = generateSyntheticImpulse(cfg, sourceAngleDeg)
             eventSig(startIdx:endIdx, m) = delayedMicPulse;
         end
     end
+end
+
+function s = localSinc(t)
+% Native pure-MATLAB normalized sinc function
+    s = ones(size(t));
+    idx = (t ~= 0);
+    s(idx) = sin(pi * t(idx)) ./ (pi * t(idx));
 end

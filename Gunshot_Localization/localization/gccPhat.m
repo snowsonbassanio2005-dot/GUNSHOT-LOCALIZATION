@@ -45,8 +45,9 @@ function [tau, quality, R_corr, lags] = gccPhat(x, y, fs, maxDelaySec)
     x = x - mean(x);
     y = y - mean(y);
 
-    % Apply smooth Tukey/Hann window to suppress FFT edge spectral leakage
-    w = tukeywin(numel(x), 0.15);
+    % Apply smooth Tukey/Hann window to suppress FFT edge spectral leakage (zero toolbox dependency)
+    Lx = numel(x);
+    w = localTukeyWin(Lx, 0.15);
     x_w = x .* w;
     y_w = y .* w;
 
@@ -149,4 +150,26 @@ function [tau, quality, R_corr, lags] = gccPhat(x, y, fs, maxDelaySec)
     zScore = (peakVal - medFloor) / (1.4826 * madFloor);
 
     quality = min(1.0, max(0.0, 0.6 * pspr + 0.4 * min(1.0, zScore / 8.0)));
+end
+
+function w = localTukeyWin(N, r)
+% Native pure-MATLAB Tukey window generator (no Signal Processing Toolbox required)
+    if N <= 1
+        w = ones(N, 1);
+        return;
+    end
+    if nargin < 2 || isempty(r)
+        r = 0.15;
+    end
+    t = (0 : N - 1)' / (N - 1);
+    w = ones(N, 1);
+    per = r / 2;
+    tl = (t < per);
+    tr = (t > (1 - per));
+    if any(tl)
+        w(tl) = 0.5 * (1 + cos(pi * (2 * t(tl) / r - 1)));
+    end
+    if any(tr)
+        w(tr) = 0.5 * (1 + cos(pi * (2 * (t(tr) - 1) / r + 1)));
+    end
 end

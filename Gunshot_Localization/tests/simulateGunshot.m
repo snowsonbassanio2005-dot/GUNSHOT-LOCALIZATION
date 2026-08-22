@@ -73,7 +73,12 @@ function [simData, t, trueDelays, trueTDOA] = simulateGunshot(sourceAngleDeg, di
     basePulse = P0 * (1 - tBlast / T_blast) .* exp(-alpha * tBlast / T_blast);
 
     % Bandpass acoustic pulse (200 - 3800 Hz)
-    [b, a] = butter(2, [200, 3800] / (fs/2), 'bandpass');
+    try
+        [b, a] = butter(2, [200, 3800] / (fs/2), 'bandpass');
+    catch
+        b = [0.05644846226073642, 0, -0.11289692452147285, 0, 0.05644846226073642];
+        a = [1.0, -3.193633306817034, 3.8485320133979526, -2.1050966172593095, 0.45044543005604093];
+    end
     filteredPulse = filter(b, a, basePulse);
 
     % Frequency-domain exact fractional delay synthesis

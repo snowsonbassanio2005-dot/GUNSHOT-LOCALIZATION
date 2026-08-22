@@ -36,8 +36,8 @@ function [gainOffsets, calibReport] = microphoneGainCalibration(refData, cfg)
     cleanData = removeDC(refData);
     filtData  = bandpassFilter(cleanData, cfg);
 
-    % Compute RMS energy per channel
-    channelRMS = rms(filtData, 1)';
+    % Compute RMS energy per channel (pure MATLAB, zero toolbox dependency)
+    channelRMS = sqrt(mean(filtData.^2, 1))';
     refRMS = median(channelRMS) + 1e-12;
 
     % Relative gain scale factor

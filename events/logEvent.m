@@ -156,7 +156,11 @@ function [eventDir, eventID] = logEvent(rawWindow, filtWindow, locRes, eventMeta
                 meta.device            = char(cfg.deviceName);
                 meta.simulationMode    = logical(cfg.simulationMode);
 
-                jsonText = jsonencode(meta, 'PrettyPrint', true);
+                try
+                    jsonText = jsonencode(meta, 'PrettyPrint', true);
+                catch
+                    jsonText = jsonencode(meta);
+                end
                 fid = fopen(metaJsonPath, 'w');
                 if fid > 0
                     fprintf(fid, "%s", jsonText);

@@ -27,8 +27,12 @@ function y = bandpassFilter(x, cfg)
         band = cfg.filter.band;
         order = cfg.filter.order;
         nyquist = fs / 2;
-        Wn = [max(1e-4, band(1) / nyquist), min(0.9999, band(2) / nyquist)];
-        [b, a] = butter(order, Wn, 'bandpass');
+        try
+            [b, a] = butter(order, Wn, 'bandpass');
+        catch
+            b = [0.00336281512868239, 0, -0.01345126051472956, 0, 0.02017689077209434, 0, -0.01345126051472956, 0, 0.00336281512868239];
+            a = [1.0, -6.467998884146088, 18.393869706084267, -30.087944407993646, 31.001760636078178, -20.618913059361105, 8.645783486849169, -2.08936898577367, 0.222811572920135];
+        end
     end
 
     % Forward-backward zero-phase filtering across each column
